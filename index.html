@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>15-Puzzle · 华容道求解演示</title>
+    <link rel="icon" href="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+    <style>
+        :root {
+            --cell-size: 68px;
+            --gap: 5px;
+            --step-px: calc(var(--cell-size) + var(--gap));
+            --grid-px: calc(4 * var(--cell-size) + 3 * var(--gap));
+            --trans-dur: 0.38s;
+            --bg: #14141c;
+            --card-bg: #1c1c28;
+            --text: #e8e8f0;
+            --text2: #9898b0;
+            --accent: #5e9fd6;
+            --accent2: #e8835c;
+            --green: #6cc07c;
+            --radius-tile: 12px;
+            --radius-card: 22px;
+            --radius-btn: 10px;
+            --shadow-tile: 0 3px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.25);
+            --shadow-tile-hover: 0 6px 20px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+            --font-mono: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--bg);
+            background-image: radial-gradient(ellipse at 25% 15%, rgba(90, 140, 210, 0.07) 0%, transparent 55%),
+                radial-gradient(ellipse at 70% 75%, rgba(220, 120, 80, 0.05) 0%, transparent 55%);
+            font-family: 'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            user-select: none;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 14px;
+            flex-direction: column;
+        }
+        .main-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-card);
+            padding: 22px 24px 18px;
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .title-area h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+            color: #f0f0f6;
+            margin: 0;
+        }
+        .title-area .sub {
+            font-size: 0.7rem;
+            color: var(--text2);
+            letter-spacing: 0.5px;
+            margin-top: 1px;
+        }
+        .puzzle-wrap {
+            position: relative;
+            width: var(--grid-px);
+            height: var(--grid-px);
+            flex-shrink: 0;
+        }
+        .puzzle-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 7px 28px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+        }
+        .slot-bg {
+            position: absolute;
+            width: var(--cell-size);
+            height: var(--cell-size);
+            border-radius: var(--radius-tile);
+            background: rgba(255, 255, 255, 0.022);
+            pointer-events: auto;
+            transition: background 0.3s, box-shadow 0.3s;
+            cursor: default;
+        }
+        .slot-bg.empty-slot {
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-tile);
+        }
+        .slot-bg.selected-slot {
+            box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.7), inset 0 0 0 2px rgba(255, 255, 255, 0.2);
+        }
+        .tile {
+            position: absolute;
+            width: var(--cell-size);
+            height: var(--cell-size);
+            border-radius: var(--radius-tile);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.45rem;
+            letter-spacing: -0.4px;
+            color: #1a1a26;
+            cursor: pointer;
+            box-shadow: var(--shadow-tile);
+            transition: transform var(--trans-dur) cubic-bezier(0.33, 1.25, 0.62, 1), box-shadow 0.3s, opacity 0.25s;
+            will-change: transform;
+            z-index: 2;
+            pointer-events: auto;
+        }
+        .tile.no-trans {
+            transition: none !important;
+        }
+        .tile:hover {
+            box-shadow: var(--shadow-tile-hover);
+            z-index: 5;
+        }
+        .tile.movable {
+            box-shadow: 0 0 0 3px rgba(255, 220, 120, 0.55), var(--shadow-tile);
+        }
+        .tile.movable:hover {
+            box-shadow: 0 0 0 4px rgba(255, 200, 80, 0.7), var(--shadow-tile-hover);
+        }
+        .tile.selected {
+            box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.7), var(--shadow-tile);
+        }
+        .tile.done-tile {
+            box-shadow: 0 0 0 3px rgba(108, 192, 124, 0.5), var(--shadow-tile);
+        }
+        .info-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.78rem;
+            color: var(--text2);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .info-row .step-num {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #e0e0e6;
+            font-family: var(--font-mono);
+        }
+        .badge {
+            padding: 3px 10px;
+            border-radius: 18px;
+            font-size: 0.68rem;
+            font-weight: 600;
+        }
+        .badge-ready {
+            background: rgba(150, 150, 180, 0.18);
+            color: #b0b0c8;
+        }
+        .badge-playing {
+            background: rgba(94, 159, 214, 0.22);
+            color: #8cc8f4;
+        }
+        .badge-done {
+            background: rgba(108, 192, 124, 0.22);
+            color: #90e0a0;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        .badge-solving {
+            background: rgba(232, 180, 80, 0.25);
+            color: #f0d060;
+            animation: pulse 0.7s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn {
+            padding: 9px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+            border: none;
+            border-radius: var(--radius-btn);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            font-family: inherit;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 3px 12px rgba(94, 159, 214, 0.3);
+        }
+        .btn-primary:hover {
+            background: #70b0e4;
+            box-shadow: 0 5px 18px rgba(94, 159, 214, 0.45);
+            transform: translateY(-1px);
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            color: #d0d0e0;
+        }
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        .btn-warn {
+            background: var(--accent2);
+            color: #fff;
+            box-shadow: 0 3px 12px rgba(232, 131, 92, 0.3);
+        }
+        .btn-warn:hover {
+            background: #f0986e;
+            box-shadow: 0 5px 18px rgba(232, 131, 92, 0.45);
+        }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .btn:active:not(:disabled) {
+            transform: scale(0.95);
+            transition: all 0.07s;
+        }
+        .ctrl-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn-ctrl {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .btn-ctrl:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.35);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+        }
+        .btn-ctrl:active {
+            transform: scale(0.88);
+            transition: all 0.06s;
+        }
+        .btn-ctrl.btn-play {
+            width: 46px;
+            height: 46px;
+            font-size: 1.2rem;
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+            box-shadow: 0 3px 14px rgba(94, 159, 214, 0.35);
+        }
+        .btn-ctrl.btn-play:hover {
+            background: #70b0e4;
+            box-shadow: 0 5px 20px rgba(94, 159, 214, 0.5);
+        }
+        .btn-ctrl.btn-play.playing {
+            background: var(--accent2);
+            border-color: var(--accent2);
+            box-shadow: 0 3px 14px rgba(232, 131, 92, 0.35);
+        }
+        .btn-ctrl:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .speed-grp {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            color: var(--text2);
+        }
+        .speed-grp input[type=range] {
+            -webkit-appearance: none;
+            width: 90px;
+            height: 5px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            outline: none;
+            cursor: pointer;
+        }
+        .speed-grp input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #e8e8f0;
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        }
+        .speed-val {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: #c0c0d4;
+            min-width: 40px;
+            text-align: center;
+        }
+        .progress-panel {
+            width: 100%;
+            max-height: 100px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: #b0b0c8;
+            line-height: 1.6;
+            display: none;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .progress-panel.visible {
+            display: block;
+        }
+        .progress-panel .highlight {
+            color: #f0d060;
+            font-weight: 600;
+        }
+        .progress-panel .dim {
+            color: #707088;
+        }
+        .progress-panel .time {
+            color: #a0c8f0;
+            font-weight: 500;
+        }
+        .path-display {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 8px;
+            padding: 7px 10px;
+            font-family: var(--font-mono);
+            font-size: 0.66rem;
+            color: #a0a8c0;
+            word-break: break-all;
+            line-height: 1.5;
+            max-height: 50px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            display: none;
+        }
+        .path-display.visible {
+            display: block;
+        }
+        .path-display span.label {
+            color: var(--text2);
+            font-weight: 600;
+            margin-right: 6px;
+            font-size: 0.7rem;
+        }
+        .toast {
+            position: fixed;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #c0392b;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 22px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            z-index: 999;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            animation: toastIn 0.28s ease-out, toastOut 0.28s 2.2s ease-in forwards;
+            pointer-events: none;
+        }
+        @keyframes toastIn {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-28px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+        @keyframes toastOut {
+            from {
+                opacity: 1;
+            }
+            to {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-18px);
+            }
+        }
+        @media (max-width: 460px) {
+            :root {
+                --cell-size: 54px;
+                --gap: 3px;
+                --radius-tile: 9px;
+            }
+            .main-card {
+                padding: 14px 10px 12px;
+                gap: 10px;
+                border-radius: 16px;
+            }
+            .tile {
+                font-size: 1.15rem;
+            }
+            .btn {
+                padding: 7px 12px;
+                font-size: 0.72rem;
+            }
+            .btn-ctrl {
+                width: 30px;
+                height: 30px;
+                font-size: 0.85rem;
+            }
+            .btn-ctrl.btn-play {
+                width: 38px;
+                height: 38px;
+                font-size: 1rem;
+            }
+            .speed-grp input[type=range] {
+                width: 60px;
+            }
+            .path-display {
+                font-size: 0.58rem;
+                max-height: 36px;
+            }
+            .progress-panel {
+                font-size: 0.6rem;
+                max-height: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-card" id="mainCard">
+        <div class="title-area">
+            <h2>🧩 数字华容道</h2>
+            <p class="sub">15-Puzzle · HP算法求解演示</p>
+        </div>
+        <div class="puzzle-wrap">
+            <div class="puzzle-container" id="puzzleContainer"></div>
+        </div>
+        <div class="info-row">
+            <span>步骤</span>
+            <span class="step-num" id="stepDisplay">0 / 0</span>
+            <span class="badge badge-ready" id="statusBadge">就绪</span>
+        </div>
+        <div class="progress-panel" id="progressPanel"></div>
+        <div class="path-display" id="pathDisplay">
+            <span class="label">解法路径:</span><span id="pathText"></span>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-outline" id="btnShuffle" title="随机合法打乱(可解)">🎲 随机打乱</button>
+            <button class="btn btn-outline" id="btnSwapMode" title="交换模式：点击两个格子互换位置">🔁 交换模式</button>
+            <button class="btn btn-outline" id="btnReset" title="重置为目标状态">↺ 重置</button>
+            <button class="btn btn-primary" id="btnSolve" title="使用HP算法求解">⚡ 求解</button>
+        </div>
+        <div class="btn-row" style="margin-top:-6px;">
+            <button class="btn btn-outline" id="btnRotate" title="顺时针旋转(翻转可解性)" style="font-size:0.7rem;">🔄 翻转可解性</button>
+            <span style="font-size:0.65rem;color:var(--text2);align-self:center;" id="solvableHint"></span>
+        </div>
+        <div class="ctrl-row">
+            <button class="btn-ctrl" id="btnStepPrev" disabled title="上一步">◀</button>
+            <button class="btn-ctrl btn-play" id="btnPlay" disabled title="播放/暂停">▶</button>
+            <button class="btn-ctrl" id="btnStepNext" disabled title="下一步">▶</button>
+            <div class="speed-grp">
+                <span>快</span>
+                <input type="range" id="speedSlider" min="60" max="1500" value="350" step="10">
+                <span>慢</span>
+                <span class="speed-val" id="speedLabel">350ms</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ==================== DOM 引用 ====================
+            const puzzleContainer = document.getElementById('puzzleContainer');
+            const stepDisplay = document.getElementById('stepDisplay');
+            const statusBadge = document.getElementById('statusBadge');
+            const progressPanel = document.getElementById('progressPanel');
+            const pathDisplay = document.getElementById('pathDisplay');
+            const pathTextEl = document.getElementById('pathText');
+            const solvableHint = document.getElementById('solvableHint');
+            const speedSlider = document.getElementById('speedSlider');
+            const speedLabel = document.getElementById('speedLabel');
+            const btnShuffle = document.getElementById('btnShuffle');
+            const btnSwapMode = document.getElementById('btnSwapMode');
+            const btnReset = document.getElementById('btnReset');
+            const btnSolve = document.getElementById('btnSolve');
+            const btnRotate = document.getElementById('btnRotate');
+            const btnPlay = document.getElementById('btnPlay');
+            const btnStepPrev = document.getElementById('btnStepPrev');
+            const btnStepNext = document.getElementById('btnStepNext');
+
+            // ==================== 状态变量 ====================
+            let cellSize, gap, stepPx;
+            let currentState = [];
+            let emptyRow = 3, emptyCol = 3;
+            let solutionPath = '';
+            let stateSequence = [];
+            let currentStep = 0;
+            let isPlaying = false;
+            let playTimer = null;
+            let tileEls = {};
+            let slotEls = [];
+            let isSolving = false;
+            let locked = false;
+            let swapMode = false;
+            let selectedNum = null;
+            let worker = null;
+            let phaseTimer = null;
+            let lastPhaseLine = null;
+            let solveStartTime = null;
+
+            function readCSSVars() {
+                const style = getComputedStyle(document.documentElement);
+                cellSize = parseFloat(style.getPropertyValue('--cell-size').trim());
+                gap = parseFloat(style.getPropertyValue('--gap').trim());
+                stepPx = cellSize + gap;
+            }
+
+            function cloneState(s) { return s.map(r => [...r]); }
+            function findEmpty(s) { for(let r=0;r<4;r++) for(let c=0;c<4;c++) if(s[r][c]===0) return {r,c}; return null; }
+            function getStateIdBigInt(s) {
+                let hex=''; for(let r=0;r<4;r++) for(let c=0;c<4;c++) hex += s[r][c].toString(16);
+                return BigInt('0x'+hex);
+            }
+            function isSolvableState(s) {
+                const flat=[]; let zr=0;
+                for(let r=0;r<4;r++) for(let c=0;c<4;c++) { if(s[r][c]===0) zr=r; else flat.push(s[r][c]); }
+                let inv=0; for(let i=0;i<flat.length;i++) for(let j=i+1;j<flat.length;j++) if(flat[i]>flat[j]) inv++;
+                return (inv+zr+1)%2===0;
+            }
+            function rotateState(s) {
+                const ns=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+                for(let r=0;r<4;r++) for(let c=0;c<4;c++) ns[c][3-r]=s[r][c];
+                return ns;
+            }
+            function showToast(msg) {
+                const existing = document.querySelector('.toast'); if(existing) existing.remove();
+                const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+                document.body.appendChild(t); setTimeout(()=>{ if(t.parentNode) t.remove(); },2600);
+            }
+            function lockMap() { locked = true; updateMovableHighlight(); }
+            function unlockMap() { locked = false; updateMovableHighlight(); }
+            function updateMovableHighlight() {
+                Object.values(tileEls).forEach(t=>t.classList.remove('movable','selected'));
+                slotEls.forEach(row=>row.forEach(s=>s.classList.remove('selected-slot')));
+                if(locked) return;
+                if(swapMode) {
+                    if(selectedNum !== null) {
+                        if(selectedNum === 0) {
+                            const slot = slotEls[emptyRow][emptyCol];
+                            if(slot) slot.classList.add('selected-slot');
+                        } else if(tileEls[selectedNum]) {
+                            tileEls[selectedNum].classList.add('selected');
+                        }
+                    }
+                } else {
+                    const neighbors = [[emptyRow-1,emptyCol],[emptyRow+1,emptyCol],[emptyRow,emptyCol-1],[emptyRow,emptyCol+1]];
+                    for(const [nr,nc] of neighbors) {
+                        if(nr>=0&&nr<4&&nc>=0&&nc<4) {
+                            const num = currentState[nr][nc];
+                            if(num!==0 && tileEls[num]) tileEls[num].classList.add('movable');
+                        }
+                    }
+                }
+            }
+            function renderState(s, er, ec, noTrans=false) {
+                for(let r=0;r<4;r++) for(let c=0;c<4;c++) {
+                    const num=s[r][c]; if(num===0) continue;
+                    const tile=tileEls[num]; if(!tile) continue;
+                    if(noTrans) tile.classList.add('no-trans'); else tile.classList.remove('no-trans');
+                    tile.style.transform = `translate(${c*stepPx}px, ${r*stepPx}px)`;
+                }
+                slotEls.forEach((row,r)=>row.forEach((slot,c)=>slot.classList.toggle('empty-slot', r===er && c===ec)));
+                updateMovableHighlight();
+                updateSolvableHint(s);
+                if(noTrans) requestAnimationFrame(()=>requestAnimationFrame(()=>Object.values(tileEls).forEach(t=>t.classList.remove('no-trans'))));
+            }
+            function renderCurrentStep(noTrans=false) {
+                if(stateSequence.length===0) return;
+                const d=stateSequence[currentStep];
+                renderState(d.state, d.emptyRow, d.emptyCol, noTrans);
+                updateUI();
+            }
+            function updateSolvableHint(s) {
+                const solvable = isSolvableState(s);
+                solvableHint.textContent = solvable ? '✓ 可解' : '⚠ 不可解';
+                solvableHint.style.color = solvable ? '#6cc07c' : '#e8835c';
+                btnRotate.style.display = solvable ? 'none' : 'inline-block';
+            }
+            function updateUI() {
+                const total = stateSequence.length-1;
+                stepDisplay.textContent = `${currentStep} / ${Math.max(0,total)}`;
+                statusBadge.classList.remove('badge-ready','badge-playing','badge-done','badge-solving');
+                if(isSolving) { statusBadge.textContent='求解中...'; statusBadge.classList.add('badge-solving'); }
+                else if(total>0 && currentStep>=total) { statusBadge.textContent='✓ 完成'; statusBadge.classList.add('badge-done'); }
+                else if(isPlaying) { statusBadge.textContent='播放中'; statusBadge.classList.add('badge-playing'); }
+                else if(total>0) { statusBadge.textContent='已就绪'; statusBadge.classList.add('badge-ready'); }
+                else { statusBadge.textContent='就绪'; statusBadge.classList.add('badge-ready'); }
+                btnStepPrev.disabled = (total<=0 || currentStep<=0 || isSolving);
+                btnStepNext.disabled = (total<=0 || currentStep>=total || isSolving);
+                btnPlay.disabled = (total<=0 || isSolving);
+                if(isPlaying) { btnPlay.textContent='⏸'; btnPlay.classList.add('playing'); }
+                else { btnPlay.textContent='▶'; btnPlay.classList.remove('playing'); }
+                if(currentStep>=total && total>0 && isPlaying) stopPlaying();
+                Object.values(tileEls).forEach(t=>t.classList.remove('done-tile'));
+                if(total>0 && currentStep>=total) Object.values(tileEls).forEach(t=>t.classList.add('done-tile'));
+                if(solutionPath && total>0) { pathTextEl.textContent=solutionPath; pathDisplay.classList.add('visible'); }
+                btnSolve.disabled = isSolving || locked;
+                btnShuffle.disabled = isSolving || isPlaying || locked;
+                btnReset.disabled = isSolving || isPlaying;
+                btnRotate.disabled = isSolving || isPlaying || locked;
+                btnSwapMode.disabled = isSolving || isPlaying || locked;
+                btnSwapMode.textContent = swapMode ? '🔁 交换模式 (开)' : '🔁 交换模式';
+            }
+            function applyMoveToState(s, er, ec, dir) {
+                let dr=0,dc=0;
+                if(dir==='U') dr=-1; else if(dir==='D') dr=1; else if(dir==='L') dc=-1; else if(dir==='R') dc=1;
+                else return null;
+                const nr=er+dr, nc=ec+dc;
+                if(nr<0||nr>3||nc<0||nc>3) return null;
+                const ns=cloneState(s); ns[er][ec]=ns[nr][nc]; ns[nr][nc]=0;
+                return {state:ns, emptyRow:nr, emptyCol:nc};
+            }
+            function onSlotClick(row, col) {
+                if(isSolving || isPlaying || locked || !swapMode) return;
+                const num = currentState[row][col];
+                if(selectedNum === null) {
+                    selectedNum = num;
+                    updateMovableHighlight();
+                } else if(selectedNum === num) {
+                    selectedNum = null;
+                    updateMovableHighlight();
+                } else {
+                    let r1,c1,r2=row,c2=col;
+                    if(selectedNum === 0) { r1=emptyRow; c1=emptyCol; }
+                    else { for(let r=0;r<4;r++) for(let c=0;c<4;c++) if(currentState[r][c]===selectedNum) { r1=r; c1=c; } }
+                    const temp = currentState[r1][c1];
+                    currentState[r1][c1] = currentState[r2][c2];
+                    currentState[r2][c2] = temp;
+                    const ep = findEmpty(currentState);
+                    emptyRow = ep.r; emptyCol = ep.c;
+                    solutionPath=''; stateSequence=[]; currentStep=0;
+                    pathDisplay.classList.remove('visible'); pathTextEl.textContent='';
+                    selectedNum = null;
+                    renderState(currentState, emptyRow, emptyCol, true);
+                    updateUI();
+                }
+            }
+            function onTileClick(num) {
+                if(isSolving || isPlaying || locked) return;
+                if(swapMode) {
+                    let tr=-1,tc=-1;
+                    for(let r=0;r<4;r++) for(let c=0;c<4;c++) if(currentState[r][c]===num) { tr=r; tc=c; }
+                    if(tr>=0) onSlotClick(tr, tc);
+                    return;
+                }
+                let tr=-1,tc=-1;
+                for(let r=0;r<4;r++) for(let c=0;c<4;c++) if(currentState[r][c]===num) { tr=r; tc=c; }
+                if(tr<0) return;
+                if(Math.abs(tr-emptyRow)+Math.abs(tc-emptyCol)===1) {
+                    currentState[emptyRow][emptyCol] = num;
+                    currentState[tr][tc] = 0;
+                    emptyRow=tr; emptyCol=tc;
+                    solutionPath=''; stateSequence=[]; currentStep=0;
+                    pathDisplay.classList.remove('visible'); pathTextEl.textContent='';
+                    renderState(currentState, emptyRow, emptyCol, true);
+                    updateUI();
+                }
+            }
+            function buildStateSequence(initS, initER, initEC, path) {
+                const seq=[{state:cloneState(initS), emptyRow:initER, emptyCol:initEC}];
+                let s=cloneState(initS), er=initER, ec=initEC;
+                for(const ch of path) {
+                    const result = applyMoveToState(s, er, ec, ch.toUpperCase());
+                    if(!result) return null;
+                    s=result.state; er=result.emptyRow; ec=result.emptyCol;
+                    seq.push({state:cloneState(s), emptyRow:er, emptyCol:ec});
+                }
+                return seq;
+            }
+            function goToStep(step) {
+                if(stateSequence.length===0) return;
+                const total=stateSequence.length-1;
+                const clamped=Math.max(0,Math.min(step,total));
+                if(clamped===currentStep) return;
+                currentStep=clamped; renderCurrentStep(false);
+                if(currentStep>=total && isPlaying) stopPlaying();
+            }
+            function stepNext() { goToStep(currentStep+1); }
+            function stepPrev() { goToStep(currentStep-1); }
+            function resetToStart() { stopPlaying(); if(stateSequence.length>0) { currentStep=0; renderCurrentStep(true); } }
+            function getSpeedMs() { return parseInt(speedSlider.value); }
+            function updateTransDur() {
+                const ms=getSpeedMs(); const dur=Math.max(0.06, ms/1000*0.7);
+                document.documentElement.style.setProperty('--trans-dur', dur.toFixed(2)+'s');
+            }
+            function startPlaying() {
+                if(stateSequence.length<=1) return;
+                const total=stateSequence.length-1;
+                if(currentStep>=total) { currentStep=0; renderCurrentStep(true); }
+                isPlaying=true; updateUI(); updateTransDur(); scheduleNext();
+            }
+            function stopPlaying() { isPlaying=false; if(playTimer) { clearTimeout(playTimer); playTimer=null; } updateUI(); }
+            function scheduleNext() {
+                if(!isPlaying) return;
+                const total=stateSequence.length-1;
+                if(currentStep>=total) { stopPlaying(); return; }
+                const delay=getSpeedMs(); updateTransDur();
+                playTimer=setTimeout(()=>{
+                    if(!isPlaying) return;
+                    stepNext();
+                    if(currentStep<total && isPlaying) scheduleNext();
+                    else if(currentStep>=total) stopPlaying();
+                }, delay);
+            }
+            function togglePlay() { if(isPlaying) stopPlaying(); else startPlaying(); }
+            function setCurrentState(s, er, ec) {
+                stopPlaying(); unlockMap();
+                currentState=cloneState(s); emptyRow=er; emptyCol=ec;
+                solutionPath=''; stateSequence=[]; currentStep=0;
+                pathDisplay.classList.remove('visible'); pathTextEl.textContent='';
+                clearContainer(); createSlots(); createTiles(currentState);
+                renderState(currentState, emptyRow, emptyCol, true); updateUI();
+            }
+            function getGoalState() { return [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,0]]; }
+            function resetToGoal() { setCurrentState(getGoalState(), 3, 3); }
+            function shuffleState(steps=150) {
+                stopPlaying(); unlockMap();
+                let s=cloneState(currentState), er=emptyRow, ec=emptyCol;
+                const dirs=['U','D','L','R']; const rev={'U':'D','D':'U','L':'R','R':'L'}; let last=null;
+                for(let i=0;i<steps;i++) {
+                    const cand=[]; for(const d of dirs) { if(d===rev[last]) continue; const r=applyMoveToState(s,er,ec,d); if(r) cand.push({d,r}); }
+                    if(cand.length===0) break;
+                    const pick=cand[Math.floor(Math.random()*cand.length)];
+                    s=pick.r.state; er=pick.r.emptyRow; ec=pick.r.emptyCol; last=pick.d;
+                }
+                setCurrentState(s, er, ec);
+            }
+            function rotateCurrent() { stopPlaying(); const rs=rotateState(currentState); const ep=findEmpty(rs); setCurrentState(rs, ep.r, ep.c); }
+            function clearContainer() { puzzleContainer.innerHTML=''; tileEls={}; slotEls=[]; }
+            function createSlots() {
+                const frag=document.createDocumentFragment();
+                slotEls = Array.from({length:4}, ()=>[]);
+                for(let r=0;r<4;r++) for(let c=0;c<4;c++) {
+                    const slot=document.createElement('div'); slot.className='slot-bg';
+                    slot.style.left=(c*stepPx)+'px'; slot.style.top=(r*stepPx)+'px';
+                    slot.dataset.r=r; slot.dataset.c=c;
+                    slot.addEventListener('click', ()=>onSlotClick(r,c));
+                    frag.appendChild(slot); slotEls[r][c]=slot;
+                }
+                puzzleContainer.appendChild(frag);
+            }
+            function createTiles(s) {
+                const frag=document.createDocumentFragment();
+                for(let r=0;r<4;r++) for(let c=0;c<4;c++) {
+                    const num=s[r][c]; if(num===0) continue;
+                    const tile=document.createElement('div'); tile.className='tile no-trans';
+                    tile.textContent=num; tile.style.transform=`translate(${c*stepPx}px, ${r*stepPx}px)`;
+                    tile.dataset.num=num;
+                    const hue=205-(num-1)*(170/14);
+                    tile.style.background=`linear-gradient(140deg, hsl(${hue},60%,76%) 0%, hsl(${hue+3},58%,70%) 55%, hsl(${hue-2},62%,64%) 100%)`;
+                    tile.style.color='#1a1a26';
+                    tile.addEventListener('click', ()=>onTileClick(num));
+                    frag.appendChild(tile); tileEls[num]=tile;
+                }
+                puzzleContainer.appendChild(frag);
+            }
+            function generateFavicon() {
+                const canvas=document.createElement('canvas'); canvas.width=64; canvas.height=64;
+                const ctx=canvas.getContext('2d');
+                ctx.beginPath(); ctx.moveTo(4+12,4); ctx.lineTo(4+56-12,4); ctx.quadraticCurveTo(4+56,4,4+56,4+12);
+                ctx.lineTo(4+56,4+56-12); ctx.quadraticCurveTo(4+56,4+56,4+56-12,4+56);
+                ctx.lineTo(4+12,4+56); ctx.quadraticCurveTo(4,4+56,4,4+56-12);
+                ctx.lineTo(4,4+12); ctx.quadraticCurveTo(4,4,4+12,4); ctx.closePath();
+                ctx.fillStyle='#5e9fd6'; ctx.fill(); ctx.strokeStyle='#3a7bbf'; ctx.lineWidth=2; ctx.stroke();
+                ctx.font='bold 32px "Inter", "PingFang SC", sans-serif'; ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+                ctx.fillText('15',32,32);
+                const link=document.querySelector('link[rel="icon"]'); if(link) link.href=canvas.toDataURL();
+            }
+            function buildWorkerCode() {
+                return `
+                'use strict';
+                function swap4bits(state,p1,p2){if(p1===p2)return state;const s1=BigInt((15-p1)*4),s2=BigInt((15-p2)*4);const v1=(state>>s1)&0xFn,v2=(state>>s2)&0xFn;state=state&~((0xFn<<s1)|(0xFn<<s2));state=state|(v1<<s2)|(v2<<s1);return state;}
+                function parseStateIdToPositions(id){
+                    const tp={}; for(let i=0;i<16;i++){ const d=Number((id>>BigInt((15-i)*4))&0xFn); if(d!==0) tp[d]={r:Math.floor(i/4),c:i%4}; } return tp;
+                }
+                function getSuccessors(state,br,bc){const s=[];if(br>0)s.push({id:swap4bits(state,br*4+bc,(br-1)*4+bc),br:br-1,bc,dir:'U'});if(br<3)s.push({id:swap4bits(state,br*4+bc,(br+1)*4+bc),br:br+1,bc,dir:'D'});if(bc>0)s.push({id:swap4bits(state,br*4+bc,br*4+bc-1),br,bc:bc-1,dir:'L'});if(bc<3)s.push({id:swap4bits(state,br*4+bc,br*4+bc+1),br,bc:bc+1,dir:'R'});return s;}
+                function heuristic(state,targetPos){const pos={};for(let i=0;i<16;i++){const d=Number((state>>BigInt((15-i)*4))&0xFn);if(d!==0)pos[d]={r:Math.floor(i/4),c:i%4};}let m=0;for(const[d,{r,c}]of Object.entries(pos)){if(targetPos[d]){const t=targetPos[d];m+=Math.abs(r-t.r)+Math.abs(c-t.c);}}let con=0;for(let row=0;row<4;row++){const tiles=[];for(const[d,{r,c}]of Object.entries(pos)){if(targetPos[d]&&targetPos[d].r===row&&r===row)tiles.push({cc:c,tc:targetPos[d].c});}tiles.sort((a,b)=>a.cc-b.cc);for(let i=0;i<tiles.length;i++)for(let j=i+1;j<tiles.length;j++)if(tiles[i].tc>tiles[j].tc)con++;}
+                for(let col=0;col<4;col++){const tiles=[];for(const[d,{r,c}]of Object.entries(pos)){if(targetPos[d]&&targetPos[d].c===col&&c===col)tiles.push({cr:r,tr:targetPos[d].r});}tiles.sort((a,b)=>a.cr-b.cr);for(let i=0;i<tiles.length;i++)for(let j=i+1;j<tiles.length;j++)if(tiles[i].tr>tiles[j].tr)con++;}return m+2*con;}
+                function isPartialGoal(state,targetPos){for(const[d,pos]of Object.entries(targetPos)){const idx=pos.r*4+pos.c;if(Number((state>>BigInt((15-idx)*4))&0xFn)!==parseInt(d))return false;}return true;}
+                function idaSearch(state,br,bc,g,bound,path,targetPos){const f=g+heuristic(state,targetPos);if(f>bound)return{found:false,bound:f};if(isPartialGoal(state,targetPos))return{found:true,bound:0};let min=Infinity;const last=path.length>0?path[path.length-1]:'';const rev={U:'D',D:'U',L:'R',R:'L'};for(const s of getSuccessors(state,br,bc)){if(s.dir===rev[last])continue;path.push(s.dir);const r=idaSearch(s.id,s.br,s.bc,g+1,bound,path,targetPos);if(r.found)return{found:true,bound:0};if(r.bound<min)min=r.bound;path.pop();}return{found:false,bound:min};}
+                function exploreIdaStarWithTargetPos(sid,br,bc,targetPos){let bound=heuristic(sid,targetPos);const path=[];while(true){const r=idaSearch(sid,br,bc,0,bound,path,targetPos);if(r.found)break;if(r.bound===Infinity)return null;bound=r.bound;}return path.join('');}
+                function moveByPath(sid,br,bc,path){let id=sid,r=br,c=bc;for(const ch of path){let dr=0,dc=0;if(ch==='U')dr=-1;else if(ch==='D')dr=1;else if(ch==='L')dc=-1;else if(ch==='R')dc=1;else return null;const nr=r+dr,nc=c+dc;if(nr<0||nr>3||nc<0||nc>3)return null;id=swap4bits(id,r*4+c,nr*4+nc);r=nr;c=nc;}return{id,br:r,bc:c};}
+                function getFullTargetPos(){const tp={};for(let i=1;i<=15;i++)tp[i]={r:Math.floor((i-1)/4),c:(i-1)%4};return tp;}
+
+                function exploreBroadIdaStar(sid,br,bc){
+                    const fullTp=getFullTargetPos(); const paths=[]; let pid=sid,pbr=br,pbc=bc;
+                    const stages=[
+                        {name:'阶段1/7: 数字1', pos:{1:{r:0,c:0}}},
+                        {name:'阶段2/7: 数字2', pos:{1:{r:0,c:0},2:{r:0,c:1}}},
+                        {name:'阶段3/7: 数字3,4', pos:{1:{r:0,c:0},2:{r:0,c:1},3:{r:0,c:2},4:{r:0,c:3}}},
+                        {name:'阶段4/7: 数字5,6', pos:{1:{r:0,c:0},2:{r:0,c:1},3:{r:0,c:2},4:{r:0,c:3},5:{r:1,c:0},6:{r:1,c:1}}},
+                        {name:'阶段5/7: 数字7,8', pos:{1:{r:0,c:0},2:{r:0,c:1},3:{r:0,c:2},4:{r:0,c:3},5:{r:1,c:0},6:{r:1,c:1},7:{r:1,c:2},8:{r:1,c:3}}},
+                        {name:'阶段6/7: 预置9,10', pos:{9:{r:3,c:0},10:{r:2,c:0}}},
+                        {name:'阶段7/7: 剩余数字', pos:fullTp}
+                    ];
+                    for(const stage of stages){
+                        self.postMessage({type:'progress',phase:'泛A*',detail:stage.name+' 开始...',start:true});
+                        const st=Date.now();
+                        if(isPartialGoal(pid,stage.pos)){
+                            self.postMessage({type:'progress',phase:'泛A*',detail:stage.name+' 结束 (已就位)',end:true,elapsed:'0.0'});
+                            paths.push(''); continue;
+                        }
+                        const path=exploreIdaStarWithTargetPos(pid,pbr,pbc,stage.pos);
+                        if(!path){ self.postMessage({type:'error',detail:stage.name+' 求解失败'}); return null; }
+                        paths.push(path);
+                        const r=moveByPath(pid,pbr,pbc,path);
+                        pid=r.id; pbr=r.br; pbc=r.bc;
+                        self.postMessage({type:'progress',phase:'泛A*',detail:stage.name+' 结束 (长度'+path.length+')',end:true,elapsed:((Date.now()-st)/1000).toFixed(1)});
+                    }
+                    const full=paths.join('');
+                    self.postMessage({type:'progress',phase:'泛A*',detail:'总路径长度: '+full.length});
+                    return full;
+                }
+
+                function exploreIdaStarToSamplify(sid,br,bc,path){
+                    let dnum=0,dx=5,len=25,cpath=path,round=0;
+                    while(dnum<5&&round<30){
+                        round++;
+                        self.postMessage({type:'progress',phase:'剪枝A*',detail:'轮'+round+' 开始 (长度'+cpath.length+')',start:true});
+                        const st=Date.now();
+                        if(cpath.length===0){
+                            self.postMessage({type:'progress',phase:'剪枝A*',detail:'轮'+round+' 结束 (空路径)',end:true,elapsed:'0.0'});
+                            dnum++; continue;
+                        }
+                        let pid=sid,pbr=br,pbc=bc; const plist=[],ll=[];
+                        if(dx>0&&cpath.length>=dx){
+                            const seg=cpath.substring(0,dx); const r=moveByPath(pid,pbr,pbc,seg);
+                            if(!r){ self.postMessage({type:'progress',phase:'剪枝A*',detail:'轮'+round+' 段构建失败',end:true,elapsed:'0.0'}); dnum++; continue; }
+                            pid=r.id; pbr=r.br; pbc=r.bc; plist.push({id:pid,br:pbr,bc:pbc}); ll.push(dx);
+                        } else if(dx===0){ plist.push({id:pid,br:pbr,bc:pbc}); ll.push(0); }
+                        for(let i=dx;i<cpath.length;i+=len){
+                            const seg=cpath.substring(i,Math.min(i+len,cpath.length));
+                            const r=moveByPath(pid,pbr,pbc,seg);
+                            if(!r){ self.postMessage({type:'progress',phase:'剪枝A*',detail:'轮'+round+' 段构建失败',end:true,elapsed:'0.0'}); break; }
+                            pid=r.id; pbr=r.br; pbc=r.bc; plist.push({id:pid,br:pbr,bc:pbc}); ll.push(seg.length);
+                        }
+                        if(plist.length<2){
+                            self.postMessage({type:'progress',phase:'剪枝A*',detail:'轮'+round+' 结束 (段数不足)',end:true,elapsed:((Date.now()-st)/1000).toFixed(1)});
+                            break;
+                        }
+                        const newPaths=[]; let sid2=sid,sbr2=br,sbc2=bc; let failed=false;
+                        for(let i=0;i<plist.length;i++){
+                            const ped=plist[i];
+                            const targetPos=parseStateIdToPositions(ped.id);
+                            const sp=exploreIdaStarWithTargetPos(sid2,sbr2,sbc2,targetPos);
+                            if(!sp){ failed=true; break; }
+                            newPaths.push(sp);
+                            sid2=ped.id; sbr2=ped.br; sbc2=ped.bc;
+                        }
+                        if(failed || newPaths.length!==plist.length){
+                            self.postMessage({type:'progress',phase:'剪枝A*',detail:'轮'+round+' 子段求解失败，跳过',end:true,elapsed:((Date.now()-st)/1000).toFixed(1)});
+                            dnum++; continue;
+                        }
+                        const newPath=newPaths.join('');
+                        const dlen=cpath.length-newPath.length;
+                        if(dlen===0){ dnum++; len=Math.min(len+8,Math.floor(cpath.length/1.8)); dx=(dx+3)%Math.max(1,len); }
+                        else { dnum=Math.max(0,dnum-1); len=Math.max(10,len-3); dx=dx%Math.max(1,len); }
+                        cpath=newPath;
+                        self.postMessage({type:'progress',phase:'剪枝A*',detail:'轮'+round+' 结束 (长度'+cpath.length+')',end:true,elapsed:((Date.now()-st)/1000).toFixed(1)});
+                    }
+                    return cpath;
+                }
+
+                self.onmessage=function(e){
+                    if(e.data.type==='solve'){
+                        const sid=BigInt('0x'+e.data.stateIdHex); const br=e.data.blankRow,bc=e.data.blankCol;
+                        try{
+                            self.postMessage({type:'progress',phase:'开始',detail:'HP算法启动...'});
+                            const broad=exploreBroadIdaStar(sid,br,bc);
+                            if(!broad){ self.postMessage({type:'error',detail:'泛A*失败'}); return; }
+                            const opt=exploreIdaStarToSamplify(sid,br,bc,broad);
+                            self.postMessage({type:'result',path:opt,success:true});
+                        }catch(err){ self.postMessage({type:'error',detail:'求解异常: '+err.message}); }
+                    }
+                };`;
+            }
+            function initWorker() {
+                if(worker) worker.terminate();
+                const blob=new Blob([buildWorkerCode()],{type:'application/javascript'});
+                worker=new Worker(URL.createObjectURL(blob));
+                worker.onmessage=function(e){
+                    const d=e.data;
+                    if(d.type==='progress'){
+                        progressPanel.classList.add('visible');
+                        if(d.start){
+                            if(lastPhaseLine){
+                                if(phaseTimer){ clearInterval(phaseTimer); phaseTimer=null; }
+                                const ts=lastPhaseLine.querySelector('.time'); if(ts) ts.textContent='(已结束)';
+                                lastPhaseLine=null;
+                            }
+                            const line=document.createElement('div'); line.className='progress-line';
+                            line.innerHTML=`<span class="dim">[${d.phase}]</span> <span class="highlight">${d.detail}</span> <span class="time">(0.0s)</span>`;
+                            progressPanel.appendChild(line); progressPanel.scrollTop=progressPanel.scrollHeight;
+                            lastPhaseLine=line; const startTime=Date.now();
+                            phaseTimer=setInterval(()=>{
+                                if(lastPhaseLine){
+                                    const elapsed=((Date.now()-startTime)/1000).toFixed(1);
+                                    const ts=lastPhaseLine.querySelector('.time'); if(ts) ts.textContent=`(${elapsed}s)`;
+                                }
+                            },200);
+                        }else if(d.end){
+                            if(phaseTimer){ clearInterval(phaseTimer); phaseTimer=null; }
+                            if(lastPhaseLine){
+                                const ts=lastPhaseLine.querySelector('.time'); if(ts) ts.textContent=`(耗时 ${d.elapsed}s)`;
+                                const hl=lastPhaseLine.querySelector('.highlight'); if(hl) hl.textContent=d.detail;
+                                lastPhaseLine=null;
+                            }else{
+                                const line=document.createElement('div');
+                                line.innerHTML=`<span class="dim">[${d.phase}]</span> <span class="highlight">${d.detail}</span> <span class="time">(耗时 ${d.elapsed}s)</span>`;
+                                progressPanel.appendChild(line);
+                            }
+                        }else{
+                            const line=document.createElement('div');
+                            line.innerHTML=`<span class="dim">[${d.phase}]</span> <span class="highlight">${d.detail}</span>`;
+                            progressPanel.appendChild(line); if(lastPhaseLine) lastPhaseLine=null;
+                        }
+                        progressPanel.scrollTop=progressPanel.scrollHeight;
+                        while(progressPanel.children.length>40) progressPanel.removeChild(progressPanel.firstChild);
+                    }else if(d.type==='error'){
+                        showToast(d.detail); finishSolving(false);
+                    }else if(d.type==='result'){
+                        if(phaseTimer){ clearInterval(phaseTimer); phaseTimer=null; }
+                        if(lastPhaseLine){ const ts=lastPhaseLine.querySelector('.time'); if(ts) ts.textContent='(已结束)'; lastPhaseLine=null; }
+                        if(d.success&&d.path){
+                            solutionPath=d.path; pathTextEl.textContent=solutionPath; pathDisplay.classList.add('visible');
+                            const seq=buildStateSequence(currentState,emptyRow,emptyCol,solutionPath);
+                            if(seq){ stateSequence=seq; currentStep=0; renderCurrentStep(true); lockMap(); }
+                            else{ showToast('路径验证失败'); stateSequence=[]; }
+                            const totalTime=solveStartTime?((Date.now()-solveStartTime)/1000).toFixed(1):'?';
+                            const line=document.createElement('div');
+                            line.innerHTML=`<span class="dim">[HP算法]</span> <span class="highlight">共耗时 ${totalTime}s</span>`;
+                            progressPanel.appendChild(line); progressPanel.scrollTop=progressPanel.scrollHeight;
+                        }
+                        finishSolving(true);
+                    }
+                };
+                worker.onerror=function(err){ showToast('Worker异常'); finishSolving(false); };
+            }
+            function startSolving() {
+                if(isSolving) return;
+                if(!isSolvableState(currentState)){ showToast('状态不可解，请翻转可解性'); return; }
+                isSolving=true; solutionPath=''; stateSequence=[]; currentStep=0;
+                pathDisplay.classList.remove('visible'); pathTextEl.textContent='';
+                progressPanel.innerHTML=''; progressPanel.classList.add('visible');
+                updateUI(); stopPlaying();
+                solveStartTime=Date.now();
+                const hex=getStateIdBigInt(currentState).toString(16).padStart(16,'0');
+                if(!worker) initWorker();
+                worker.postMessage({type:'solve',stateIdHex:hex,blankRow:emptyRow,blankCol:emptyCol});
+            }
+            function finishSolving(success){
+                isSolving=false; solveStartTime=null; updateUI();
+                if(!success&&solutionPath==='') progressPanel.classList.remove('visible');
+            }
+            btnShuffle.addEventListener('click',()=>shuffleState(200));
+            btnSwapMode.addEventListener('click',()=>{ swapMode=!swapMode; selectedNum=null; updateMovableHighlight(); updateUI(); });
+            btnReset.addEventListener('click',resetToGoal);
+            btnSolve.addEventListener('click',startSolving);
+            btnRotate.addEventListener('click',rotateCurrent);
+            btnPlay.addEventListener('click',togglePlay);
+            btnStepNext.addEventListener('click',()=>{ stopPlaying(); stepNext(); });
+            btnStepPrev.addEventListener('click',()=>{ stopPlaying(); stepPrev(); });
+            speedSlider.addEventListener('input',()=>{ speedLabel.textContent=getSpeedMs()+'ms'; updateTransDur(); });
+            document.addEventListener('keydown',(e)=>{
+                if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+                if(stateSequence.length<=1||isSolving) return;
+                switch(e.key){
+                    case ' ': e.preventDefault(); togglePlay(); break;
+                    case 'ArrowRight': e.preventDefault(); stopPlaying(); stepNext(); break;
+                    case 'ArrowLeft': e.preventDefault(); stopPlaying(); stepPrev(); break;
+                    case 'r': case 'R': e.preventDefault(); resetToStart(); break;
+                }
+            });
+            window.addEventListener('resize',()=>{
+                readCSSVars();
+                if(stateSequence.length>0) renderCurrentStep(true);
+                else renderState(currentState,emptyRow,emptyCol,true);
+            });
+            function init(){
+                readCSSVars(); generateFavicon();
+                speedLabel.textContent=getSpeedMs()+'ms'; updateTransDur();
+                const goal=getGoalState(); currentState=cloneState(goal); emptyRow=3; emptyCol=3;
+                solutionPath=''; stateSequence=[]; currentStep=0;
+                clearContainer(); createSlots(); createTiles(currentState);
+                renderState(currentState,emptyRow,emptyCol,true); updateUI();
+                progressPanel.classList.remove('visible'); pathDisplay.classList.remove('visible');
+                initWorker();
+            }
+            init();
+        })();
+    </script>
+    <footer style="
+        margin-top: 20px;
+        text-align: center;
+        color: #9898b0;
+        font-size: 0.72rem;
+        letter-spacing: 0.3px;
+        line-height: 1.8;
+    ">
+        <div>项目地址: <a href="https://github.com/ymz-w/15-puzzle" style="color: #a0c8f0; text-decoration: none;">github.com/ymz-w/15-puzzle</a></div>
+        <div>- ω -</div>
+    </footer>
+</body>
+</body>
+</html>
